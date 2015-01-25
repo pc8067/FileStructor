@@ -1,0 +1,34 @@
+FileStructor
+
+This project contains the header file, "file_structor.h",
+and will build an archive, "file_structor.a",
+to support reading data from input streams such as files and sockets,
+into memory, especially structs.
+
+Building and Installing:
+You need the contents of the "include" folder
+in your project's include directory, and link to the "file_structor.a" archive.
+The former comes with the source code,
+and the latter will appear in the root of the source directory
+after you run "make".
+
+When compiled out of the box, the code is optimized,
+and does not include debug information and output.
+These settings can be changed in the "_CPPFLAGS" variable in "common.mk":
+To add debug output, add "-D DEBUG".
+To add debug information to the binary, add "-g".
+"-O3" is the optimization flag, which you can remove or change.
+
+In "common.mk" you can also change the value of "CC"
+to any GCC-compatible compiler.
+
+
+file_structor.c/h:
+"struct file_structor" contains basic information about a file,
+which you can load with "open_file_structor".
+Afterwards, you can use it to initialize "struct file_struct"
+with the function "init_file_struct" to access structs located in the file,
+and load the members using the "COPY*_MEMBER" macros. 
+
+For any other copying task in which the order may need
+to be translated for the machine, use "portable_memcpy"
