@@ -52,7 +52,7 @@ struct file_struct {
 	/* the source file */
 	struct file_structor *src_file;
 	/* the number of bytes in the struct, ie. its size */
-	size_t size;
+	uint64_t size;
 	/* the location of the struct chunk in the file */
 	off_t start_in_file;
 
