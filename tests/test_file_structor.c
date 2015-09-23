@@ -68,26 +68,24 @@ static int check_output_chunks(struct file_struct_tv *tv, void *output)
 static int
 test_reader(struct file_struct_tv *tv, struct file_struct *input_holder)
 {
-	if (!tv->expect_success && tv->result.failure.fail_at_init) {
+	if (tv->fail_stage < FSFAIL_READ) {
 		printlg(ERROR_LEVEL, "Uncaught initialization error.\n");
 		return 0;
 	} else {
 		uint8_t output_buffer[tv->size];
+		int result = tv->fail_stage == FSFAIL_READ ?
+			     tv->bad_reader(output_buffer, input_holder,
+					    &(tv->result.failure)) :
+			     tv->good_reader(output_buffer, input_holder);
 
-		if (!tv->reader(output_buffer, input_holder)) {
-			if (tv->expect_success) {
-				printlg(ERROR_LEVEL, "Copying test failed.\n");
-			} else {
-				printlg(ERROR_LEVEL,
-					"Did not catch copying error.\n");
-			}
-			return 0;
-		} else {
-			if (tv->expect_success) {
+		if (result) {
+			if (tv->fail_stage == FSFAIL_NEVER) {
 				return check_output_chunks(tv, output_buffer);
 			} else {
 				return 1;
 			}
+		} else {
+			return 0;
 		}
 	}
 }
@@ -106,42 +104,12 @@ static int _test_file_struct(struct file_struct_tv *tv,
 
 	if ((status = init_file_struct(&input_holder, structor, tv->size,
 				       tv->start_in_file))) {
-		if (tv->expect_success) {
-			printlg(ERROR_LEVEL, "Unexpected testing error: %d.\n",
-				status);
+		if (tv->fail_stage > FSFAIL_INIT) {
+			printlg(ERROR_LEVEL, "Unexpected initalization error: "
+					     "%d.\n", status);
 			return 0;
 		} else {
-			if (tv->result.failure.fail_at_init) {
-				if (tv->result.failure.app_error == status) {
-					if (status == FSERR_ERRNO &&
-					    tv->result.failure.expected_errno
-					    != errno) {
-						printlg(ERROR_LEVEL,
-							"Expected errno %d "
-							"at initialization, "
-							"but got %d.\n",
-							tv->result
-							  .failure
-							  .expected_errno,
-							errno);
-						return 0;
-					}
-					return 1;
-				} else {
-					printlg(ERROR_LEVEL,
-						"Expected error %d "
-						"at initialization, "
-						"but got %d.\n",
-						tv->result.failure.app_error,
-						status);
-					return 0;
-				}
-			} else {
-				printlg(ERROR_LEVEL,
-					"Premature initialization error: %d.\n",
-					status);
-				return 0;
-			}
+			return check_error(&(tv->result.failure), status);
 		}
 	} else {
 		int ret = test_reader(tv, &input_holder);
@@ -160,18 +128,29 @@ static int test_file_struct(struct file_struct_tv *tv)
 	size_t name_len = strlen(tv->test_name);
 	char path[dir_len + name_len + 1];
 	struct file_structor structor;
+	enum fs_status status;
 
 	debug_assert(dir_len == strlen(TEST_FILE_DIR));
 
 	strncpy(path, TEST_FILE_DIR, dir_len + 1);
 	strncat(path, tv->test_name, name_len + 1);
 
-	if (open_file_structor(&structor, path)) {
-		printlg(ERROR_LEVEL, "Could not open file at %s.\n",
-			path);
-		return 0;
+	if ((status = open_file_structor(&structor, path))) {
+		if (tv->fail_stage > FSFAIL_OPEN) {
+			printlg(ERROR_LEVEL, "Could not open file at %s.\n",
+				path);
+			return 0;
+		} else {
+			return check_error(&(tv->result.failure), status);
+		}
 	} else {
-		int ret = _test_file_struct(tv, &structor);
+		int ret;
+		if (tv->fail_stage <= FSFAIL_OPEN) {
+			printlg(ERROR_LEVEL, "Uncaught opening error.\n");
+			ret = 0;
+		} else {
+			ret = _test_file_struct(tv, &structor);
+		}
 		close_file_structor(&structor);
 		return ret;
 	}

@@ -4,6 +4,44 @@
 #include <stdlib.h>
 #include <errno.h>
 
+int check_error(struct fail_result *failure, enum fs_status status)
+{
+	if (failure->app_error != status) {
+		printlg(ERROR_LEVEL,
+			"Expected returned error %d, but got %d.\n",
+			failure->app_error, status);
+		return 0;
+	} else {
+		if ((status == FSERR_ERRNO) &&
+		    (failure->expected_errno != errno)) {
+			printlg(ERROR_LEVEL,
+				"Expected errno %d, but got %d.\n",
+				failure->expected_errno, errno);
+			return 0;
+		}
+		return 1;
+	}
+}
+
+/* a non-existent file that should not be opened */
+#define BAD_TEST_FILE	"nonexistent_test_file_name"
+
+/* Expect to fail while reading non-existing test file. */
+struct file_struct_tv file_not_exist = {
+	.test_name = BAD_TEST_FILE,
+	.fail_stage = FSFAIL_OPEN,
+
+	.size = 0,
+	.start_in_file = 0,
+
+	.result = {
+		.failure = {
+			.app_error = FSERR_ERRNO,
+			.expected_errno = ENOENT,
+		}
+	},
+};
+
 /*
  * In the first successful test,
  * we will test a struct with an 8-byte, big-endian integer,
@@ -48,16 +86,13 @@
  */
 struct file_struct_tv chunk_too_large = {
 	.test_name = DEFAULT_TEST_FILE,
-	.expect_success = 0,
+	.fail_stage = FSFAIL_INIT,
 
 	.size = FILE_SIZE,
 	.start_in_file = FIRST_NUMBER_START,
 
-	.reader = NULL,
-
 	.result = {
 		.failure = {
-			.fail_at_init = 1,
 			.app_error = FSERR_OUT_OF_FILE
 		}
 	},
@@ -69,34 +104,25 @@ struct file_struct_tv chunk_too_large = {
  */
 struct file_struct_tv chunk_out_of_range = {
 	.test_name = DEFAULT_TEST_FILE,
-	.expect_success = 0,
+	.fail_stage = FSFAIL_INIT,
 
 	.size = LONG_INT_SIZE,
 	.start_in_file = OVER_FILE_SIZE,
 
-	.reader = NULL,
-
 	.result = {
 		.failure = {
-			.fail_at_init = 1,
 			.app_error = FSERR_OUT_OF_FILE
 		}
 	},
 };
 
-static int read_member_too_large(void *output, struct file_struct *input)
+static int read_member_too_large(void *output, struct file_struct *input,
+				 struct fail_result *failure)
 {
 	enum fs_status status;
 	if ((status = copy_section(output, input, SECOND_NUMBER_START,
 				   STRUCT_SIZE, BIG_END))) {
-		if (status == FSERR_OUT_OF_STRUCT) {
-			return 1;
-		} else {
-			printlg(ERROR_LEVEL,
-				"Expected error %d for reading large size, "
-				"but got %d.\n", FSERR_OUT_OF_STRUCT, status);
-			return 0;
-		}
+		return check_error(failure, status);
 	} else {
 		printlg(ERROR_LEVEL,
 			"Did not catch large size copy error.\n");
@@ -110,34 +136,27 @@ static int read_member_too_large(void *output, struct file_struct *input)
  */
 struct file_struct_tv member_too_large = {
 	.test_name = DEFAULT_TEST_FILE,
-	.expect_success = 0,
+	.fail_stage = FSFAIL_READ,
 
 	.size = STRUCT_SIZE,
 	.start_in_file = FIRST_NUMBER_START,
 
-	.reader = read_member_too_large,
+	.bad_reader = read_member_too_large,
 
 	.result = {
 		.failure = {
-			.fail_at_init = 0,
+			.app_error = FSERR_OUT_OF_STRUCT
 		}
 	},
 };
 
-static int read_member_out_of_range(void *output, struct file_struct *input)
+static int read_member_out_of_range(void *output, struct file_struct *input,
+				    struct fail_result *failure)
 {
 	enum fs_status status;
 	if ((status = copy_section(output, input, STRUCT_END, LONG_INT_SIZE,
 				   BIG_END))) {
-		if (status != FSERR_OUT_OF_STRUCT) {
-			printlg(ERROR_LEVEL,
-				"Expected error %d for reading out of range, "
-				"but got %d.\n",
-				FSERR_OUT_OF_STRUCT, status);
-			return 0;
-		} else {
-			return 1;
-		}
+		return check_error(failure, status);
 	} else {
 		printlg(ERROR_LEVEL,
 			"Did not catch out of range copy error.\n");
@@ -148,16 +167,16 @@ static int read_member_out_of_range(void *output, struct file_struct *input)
 /* Read after the struct chunk, so expect a failure during reading. */
 struct file_struct_tv member_out_of_range = {
 	.test_name = DEFAULT_TEST_FILE,
-	.expect_success = 0,
+	.fail_stage = FSFAIL_READ,
 
 	.size = STRUCT_SIZE,
 	.start_in_file = FIRST_NUMBER_START,
 
-	.reader = read_member_out_of_range,
+	.bad_reader = read_member_out_of_range,
 
 	.result = {
 		.failure = {
-			.fail_at_init = 0,
+			.app_error = FSERR_OUT_OF_STRUCT
 		}
 	},
 };
@@ -226,12 +245,12 @@ static struct output_chunk outputs_all_orders[N_OUTPUTS_ALL_ORDERS] = {
 /* Expect to successfully read the three elements of "struct test_struct". */
 struct file_struct_tv all_orders = {
 	.test_name = DEFAULT_TEST_FILE,
-	.expect_success = 1,
+	.fail_stage = FSFAIL_NEVER,
 
 	.size = STRUCT_SIZE,
 	.start_in_file = FIRST_NUMBER_START,
 
-	.reader = read_all_orders,
+	.good_reader = read_all_orders,
 
 	.result = {
 		.success = {
@@ -306,12 +325,12 @@ static struct output_chunk outputs_array_order[N_ARRAYS] = {
 /* Expect to successfully read the two elements of "struct array_struct". */
 struct file_struct_tv array_order = {
 	.test_name = ARRAY_TEST_FILE,
-	.expect_success = 1,
+	.fail_stage = FSFAIL_NEVER,
 
 	.size = sizeof(struct array_struct),
 	.start_in_file = 0,
 
-	.reader = read_array_order,
+	.good_reader = read_array_order,
 
 	.result = {
 		.success = {
@@ -322,7 +341,7 @@ struct file_struct_tv array_order = {
 };
 
 struct file_struct_tv *file_struct_tvs[N_FILE_STRUCT_TVS] = {
-	&chunk_too_large, &chunk_out_of_range,
+	&file_not_exist, &chunk_too_large, &chunk_out_of_range,
 	&member_too_large, &member_out_of_range,
 	&all_orders, &array_order
 };
