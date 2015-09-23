@@ -11,7 +11,7 @@
 #define TEST_FILE_DIR		"test_inputs/"
 
 /* the length of the directory name, including the separator */
-const size_t dir_len = 12;
+#define DIR_LEN 12
 
 /*
  * Assumming the reader function did not report an error,
@@ -126,13 +126,13 @@ static int _test_file_struct(struct file_struct_tv *tv,
 static int test_file_struct(struct file_struct_tv *tv)
 {
 	size_t name_len = strlen(tv->test_name);
-	char path[dir_len + name_len + 1];
+	char path[DIR_LEN + name_len + 1];
 	struct file_structor structor;
 	enum fs_status status;
 
-	debug_assert(dir_len == strlen(TEST_FILE_DIR));
+	debug_assert(DIR_LEN == strlen(TEST_FILE_DIR));
 
-	strncpy(path, TEST_FILE_DIR, dir_len + 1);
+	strncpy(path, TEST_FILE_DIR, DIR_LEN + 1);
 	strncat(path, tv->test_name, name_len + 1);
 
 	if ((status = open_file_structor(&structor, path))) {
