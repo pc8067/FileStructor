@@ -52,8 +52,13 @@ struct file_struct_tv {
 		struct {
 			/* Should the failure occur during initialization? */
 			int fail_at_init;
-			/* If so, what should errno be? */
-			int init_failure;
+			/* If so, what should the error status be? */
+			enum fs_status app_error;
+			/*
+			 * If "app_error" == FSERR_ERRNO,
+			 * what should errno be?
+			 */
+			int expected_errno;
 		} failure;
 	} result;
 };

@@ -2,6 +2,7 @@
 
 #include <logger.h>
 #include <stdlib.h>
+#include <errno.h>
 
 /*
  * In the first successful test,
@@ -57,7 +58,7 @@ struct file_struct_tv chunk_too_large = {
 	.result = {
 		.failure = {
 			.fail_at_init = 1,
-			.init_failure = ERANGE
+			.app_error = FSERR_OUT_OF_FILE
 		}
 	},
 };
@@ -78,22 +79,22 @@ struct file_struct_tv chunk_out_of_range = {
 	.result = {
 		.failure = {
 			.fail_at_init = 1,
-			.init_failure = ERANGE
+			.app_error = FSERR_OUT_OF_FILE
 		}
 	},
 };
 
 static int read_member_too_large(void *output, struct file_struct *input)
 {
-	if (copy_section(output, input, SECOND_NUMBER_START, STRUCT_SIZE,
-			 BIG_END)) {
-		if (errno == ERANGE) {
+	enum fs_status status;
+	if ((status = copy_section(output, input, SECOND_NUMBER_START,
+				   STRUCT_SIZE, BIG_END))) {
+		if (status == FSERR_OUT_OF_STRUCT) {
 			return 1;
 		} else {
 			printlg(ERROR_LEVEL,
 				"Expected error %d for reading large size, "
-				"but got %d.\n",
-				ERANGE, errno);
+				"but got %d.\n", FSERR_OUT_OF_STRUCT, status);
 			return 0;
 		}
 	} else {
@@ -125,12 +126,14 @@ struct file_struct_tv member_too_large = {
 
 static int read_member_out_of_range(void *output, struct file_struct *input)
 {
-	if (copy_section(output, input, STRUCT_END, LONG_INT_SIZE, BIG_END)) {
-		if (errno != ERANGE) {
+	enum fs_status status;
+	if ((status = copy_section(output, input, STRUCT_END, LONG_INT_SIZE,
+				   BIG_END))) {
+		if (status != FSERR_OUT_OF_STRUCT) {
 			printlg(ERROR_LEVEL,
 				"Expected error %d for reading out of range, "
 				"but got %d.\n",
-				ERANGE, errno);
+				FSERR_OUT_OF_STRUCT, status);
 			return 0;
 		} else {
 			return 1;
@@ -169,27 +172,28 @@ struct test_struct {
 static int read_all_orders(void *output, struct file_struct *input)
 {
 	struct test_struct *output_struct = (struct test_struct *) output;
+	enum fs_status status;
 
-	if (COPY_MEMBER(output_struct, input, struct test_struct, first_int,
-			BIG_END)) {
+	if ((status = COPY_MEMBER(output_struct, input, struct test_struct,
+				  first_int, BIG_END))) {
 		printlg(ERROR_LEVEL,
 			"Unexpected error %d while copying first_int.\n",
-			errno);
+			status);
 		return 0;
 	}
 
-	if (COPY_MEMBER(output_struct, input, struct test_struct, second_int,
-			LITTLE_END)) {
+	if ((status = COPY_MEMBER(output_struct, input, struct test_struct,
+				  second_int, LITTLE_END))) {
 		printlg(ERROR_LEVEL,
 			"Unexpected error %d while copying second_int.\n",
-			errno);
+			status);
 		return 0;
 	}
 
-	if (COPY_DIRECT_MEMBER(output_struct, input, struct test_struct,
-			       string)) {
+	if ((status = COPY_DIRECT_MEMBER(output_struct, input,
+					 struct test_struct, string))) {
 		printlg(ERROR_LEVEL,
-			"Unexpected error %d while copying string.\n", errno);
+			"Unexpected error %d while copying string.\n", status);
 		return 0;
 	}
 
@@ -256,23 +260,23 @@ struct array_struct {
 static int read_array_order(void *output, struct file_struct *input)
 {
 	struct array_struct *output_struct = (struct array_struct *) output;
-	int ret;
+	enum fs_status status;
 
 	COPY_ARRAY_MEMBER(output_struct, input, struct array_struct,
-			  little_array, LITTLE_END, ret);
-	if (ret) {
+			  little_array, LITTLE_END, status);
+	if (status) {
 		printlg(ERROR_LEVEL,
 			"Unexpected error %d while copying little_array.\n",
-			errno);
+			status);
 		return 0;
 	}
 
 	COPY_ARRAY_MEMBER(output_struct, input, struct array_struct,
-			  big_array, BIG_END, ret);
-	if (ret) {
+			  big_array, BIG_END, status);
+	if (status) {
 		printlg(ERROR_LEVEL,
 			"Unexpected error %d while copying big_array.\n",
-			errno);
+			status);
 		return 0;
 	}
 

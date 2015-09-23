@@ -13,8 +13,28 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <stddef.h>
+
+/* error codes */
+enum fs_status {
+	/* There was no error. Equivalent to FALSE. */
+	FS_NO_ERROR = 0,
+	/*
+	 * There was an error in using libc call.
+	 * More specific code is in errno.
+	 */
+	FSERR_ERRNO,
+	/*
+	 * The requested segment of data is beyond the range
+	 * given by the instance of "struct file_structor".
+	 */
+	FSERR_OUT_OF_FILE,
+	/*
+	 * The requested segment of data is beyond the range
+	 * given by the instance of "struct file_struct".
+	 */
+	FSERR_OUT_OF_STRUCT,
+};
 
 /* wrapper around the file from which to map the data chunks */
 struct file_structor {
@@ -29,21 +49,23 @@ struct file_structor {
  * given the path of the source file.
  * to_open:	the source wrapper to initialize
  * path:	the path of the source file
- * returns	0 on success,
- *		-1 if opening the file or finding its size failed,
- *		   with errno set by the failing function: "open" or "fstat"
+ * returns	FS_NO_ERROR on success,
+ *		FSERR_ERRNO if opening the file or finding its size failed,
+ *			with errno set by the failing function:
+ *			"open" or "fstat"
  */
-int open_file_structor(struct file_structor *to_open, const char *path);
+enum fs_status
+open_file_structor(struct file_structor *to_open, const char *path);
 /*
  * Try to close the source file,
  * and set its descriptor to indicate that it is invalid.
  * to_close:	the wrapper whose source file descriptor to close
- * returns	0 on success or if
- *		  the file descriptor does not need to be closed;
- *		-1 if the file must be closed, but closing failed,
- *		   with errno set by the failing function: "close"
+ * returns	FS_NO_ERROR on success or if
+ *			the file descriptor does not need to be closed;
+ *		FSERR_ERRNO if the file must be closed, but closing failed,
+ *			with errno set by the failing function: "close"
  */
-int close_file_structor(struct file_structor *to_close);
+enum fs_status close_file_structor(struct file_structor *to_close);
 
 /*
  * contains pointer to a data struct chunk in the file
@@ -77,14 +99,14 @@ struct file_struct {
  *			and the value for the "src_file" field
  * size:		the size of the struct
  * start_in_file:	the starting location of the chunk in the file
- * returns		0 on success,
- *			-1 if requested chunk is beyond the range of the file,
- *			   indicated by its size,
- *			   in which case errno will be set to ERANGE,
- *			   or if "mmap" failed, in which case
- *			   the failed function will set errno
+ * returns		FS_NO_ERROR on success;
+ *			FSERR_ERRNO if "mmap" failed, in which case
+ *				the failed function will set errno;
+ *			FSERR_OUT_OF_FILE if the requested chunk
+ *				is beyond the range of the file,
+ *				indicated by its size,
  */
-int
+enum fs_status
 init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
 		 off_t size, off_t start_in_file);
 /*
@@ -95,12 +117,12 @@ init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
  *			and the value for the "src_file" field
  * data_type:		the type of the source destination
  * start_in_file:	the starting location of the chunk in the file
- * returns		0 on success,
- *			-1 if requested chunk is beyond the range of the file,
- *			   indicated by its size,
- *			   in which case errno will be set to ERANGE,
- *			   or "mmap" failed, in which case
- *			   the failed function will set errno
+ * returns		FS_NO_ERROR on success;
+ *			FSERR_ERRNO if "mmap" failed, in which case
+ *				the failed function will set errno;
+ *			FSERR_OUT_OF_FILE if the requested chunk
+ *				is beyond the range of the file,
+ *				indicated by its size,
  */
 #define INIT_FILE_STRUCT(to_init, src_file, data_type, start_in_file) \
 	init_file_struct(to_init, src_file, sizeof(data_type), start_in_file)
@@ -111,14 +133,14 @@ init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
  * big_struct:		the larger struct chunk containing "to_init"
  * size:		the size of the new struct
  * start_in_struct:	the starting location of the chunk in the source struct
- * returns		0 on success,
- *			-1 if requested chunk is beyond the range
- *			   of the larger struct indicated by its size,
- *			   in which case errno will be set to ERANGE
+ * returns		FS_NO_ERROR on success;
+ *			FSERR_OUT_OF_STRUCT if the requested chunk is
+ *				beyond the range of "big_struct",
+ *				indicated by its size
  */
-int derive_file_struct(struct file_struct *to_init,
-		       struct file_struct *big_struct, off_t size,
-		       size_t start_in_struct);
+enum fs_status
+derive_file_struct(struct file_struct *to_init, struct file_struct *big_struct,
+		   off_t size, size_t start_in_struct);
 
 /*
  * wrapper around "derive_file_struct"
@@ -131,11 +153,10 @@ int derive_file_struct(struct file_struct *to_init,
  * big_type:		the type of "big_struct"
  * small_member:	the name of the member in "big_struct" from which to
  *			derive the data range
- * returns		0 on success,
- *			-1 if requested chunk is
- *			   beyond the range of "big_struct",
- *			   indicated by its size,
- *			   in which case errno will be set to ERANGE
+ * returns		FS_NO_ERROR on success;
+ *			FSERR_OUT_OF_STRUCT if the requested chunk is
+ *				beyond the range of "big_struct",
+ *				indicated by its size
  */
 #define DERIVE_FILE_STRUCT(to_init, big_struct, big_type, small_member) \
 	derive_file_struct(to_init, big_struct, \
@@ -148,11 +169,11 @@ int derive_file_struct(struct file_struct *to_init,
  * Set all the pointers to NULL.
  * to_teardown:		the data chunk whose data to unmap,
  *			and have pointer fields set to NULL
- * returns		0 iff successful, or unmapping is not needed;
- *			-1 on error in unmapping,
- *			   with errno set by the failing function: "munmap"
+ * returns		FS_NO_ERROR on success, or unmapping is not needed;
+ *			FSERR_ERRNO on error in unmapping,
+ *				with errno set by the failing function: "munmap"
  */
-int teardown_file_struct(struct file_struct *to_teardown);
+enum fs_status teardown_file_struct(struct file_struct *to_teardown);
 
 /*
  * Helper function to "copy_section" to copy memory in reverse,
@@ -245,11 +266,11 @@ inline static void portable_memcpy(void *dst, void *src, size_t size,
  * offset:	the offset in the destination struct and in the raw data
  * size:	the number of bytes to copy
  * endianness	the desired endianness
- * returns	0 on success;
- *		-1 if the requested section is outside the range of the chunk,
- *		   in which case errno will be set to ERANGE
+ * returns	FS_NO_ERROR on success;
+ *		FSERR_OUT_OF_STRUCT if the requested section
+ *			is outside the range of the chunk
  */
-inline static int
+inline static enum fs_status
 copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
 	     enum endianness endianness)
 {
@@ -259,8 +280,7 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
 			"but struct chunk only has data up to %u.\n",
 			(unsigned) offset, (unsigned) (offset + size),
 			(unsigned) src->size);
-		errno = ERANGE;
-		return -1;
+		return FSERR_OUT_OF_STRUCT;
 	} else {
 		void *dst_section = dst + offset;
 		void *src_section = src->data + offset;
@@ -279,9 +299,9 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
  * type:	the type of the struct
  * member:	the name of the member
  * endianness:	the desired endianness
- * returns	0 on success;
- *		-1 if the requested section is outside the range of the chunk,
- *		   in which case errno will be set to ERANGE
+ * returns	FS_NO_ERROR on success;
+ *		FSERR_OUT_OF_STRUCT if the requested section
+ *			is outside the range of the chunk
  */
 #define COPY_MEMBER(dst, src, type, member, endianness) \
 	copy_section(dst, src, offsetof(type, member), \
@@ -295,9 +315,9 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
  * src:		the source chunk
  * type:	the type of the struct
  * member:	the name of the member
- * returns	0 on success;
- *		-1 if the requested section is outside the range of the chunk,
- *		   in which case errno will be set to ERANGE
+ * returns	FS_NO_ERROR on success;
+ *		FSERR_OUT_OF_STRUCT if the requested section
+ *			is outside the range of the chunk
  */
 #define COPY_DIRECT_MEMBER(dst, src, type, member) \
 	COPY_MEMBER(dst, src, type, member, machine_endianness())
@@ -314,10 +334,9 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
  * member:		the name of the member
  * endianness:		the desired endianness
  * status:		will be set to
- *			0 on success;
- *			-1 if the requested section is
- *			   outside the range of the chunk,
- *			   in which case errno will be set to ERANGE
+ *			FS_NO_ERROR on success;
+ *			FSERR_OUT_OF_STRUCT if the requested section
+ *				is outside the range of the chunk
  */
 #define COPY_ARRAY_MEMBER(dst, src, type, member, endianness, status) do { \
 	size_t full_width = sizeof((((type *) dst)->member)); \
@@ -328,8 +347,8 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
 	status = 0; \
 	for (array_offset = 0; array_offset < full_width; \
 	     array_offset += width) { \
-		status |= copy_section(dst, src, array_start + array_offset, \
-				       width, endianness); \
+		status = copy_section(dst, src, array_start + array_offset, \
+				      width, endianness); \
 		if (status) { \
 			break; \
 		} \

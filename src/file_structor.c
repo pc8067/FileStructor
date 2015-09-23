@@ -8,12 +8,13 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-int open_file_structor(struct file_structor *to_open, const char *path)
+enum fs_status
+open_file_structor(struct file_structor *to_open, const char *path)
 {
 	to_open->fd = open(path, O_RDONLY);
 	if (to_open->fd < 0) {
 		printlg(ERROR_LEVEL, "Unable to open file %s.\n", path);
-		return -1;
+		return FSERR_ERRNO;
 	} else {
 		struct stat size_stat;
 
@@ -23,34 +24,34 @@ int open_file_structor(struct file_structor *to_open, const char *path)
 				"of file %s.\n", to_open->fd, path);
 			close(to_open->fd);
 			to_open->fd = -1;
-			return -1;
+			return FSERR_ERRNO;
 		}
 
 		to_open->size = size_stat.st_size;
 
-		return 0;
+		return FS_NO_ERROR;
 	}
 }
 
-int close_file_structor(struct file_structor *to_close)
+enum fs_status close_file_structor(struct file_structor *to_close)
 {
 	if (to_close->fd < 0) {
-		return 0;
+		return FS_NO_ERROR;
 	}
 
 	if (close(to_close->fd)) {
 		printlg(WARNING_LEVEL, "Unable to close file descriptor %d.\n",
 			to_close->fd);
-		return -1;
+		return FSERR_ERRNO;
 	}
 
 	to_close->fd = -1;
 	to_close->size = 0;
 
-	return 0;
+	return FS_NO_ERROR;
 }
 
-int
+enum fs_status
 init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
 		 off_t size, off_t start_in_file)
 {
@@ -63,8 +64,7 @@ init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
 			(unsigned) start_in_file,
 			(unsigned) (start_in_file + size),
 			(unsigned) src_file->size);
-		errno = ERANGE;
-		return -1;
+		return FSERR_OUT_OF_FILE;
 	}
 
 	start_adjustment = start_in_file % sysconf(_SC_PAGE_SIZE);
@@ -90,12 +90,12 @@ init_file_struct(struct file_struct *to_init, struct file_structor *src_file,
 	to_init->size = size;
 	to_init->start_in_file = start_in_file;
 
-	return 0;
+	return FS_NO_ERROR;
 }
 
-int derive_file_struct(struct file_struct *to_init,
-		       struct file_struct *big_struct, off_t size,
-		       size_t start_in_struct)
+enum fs_status
+derive_file_struct(struct file_struct *to_init, struct file_struct *big_struct,
+		   off_t size, size_t start_in_struct)
 {
 	if (start_in_struct + size > big_struct->size) {
 		printlg(ERROR_LEVEL,
@@ -104,8 +104,7 @@ int derive_file_struct(struct file_struct *to_init,
 			(unsigned) start_in_struct,
 			(unsigned) (start_in_struct + size),
 			(unsigned) big_struct->size);
-		errno = ERANGE;
-		return -1;
+		return FSERR_OUT_OF_STRUCT;
 	}
 
 	to_init->data = big_struct->data + start_in_struct;
@@ -114,13 +113,13 @@ int derive_file_struct(struct file_struct *to_init,
 	to_init->start_in_file = big_struct->start_in_file + start_in_struct;
 	to_init->mapping_start = NULL;
 
-	return 0;
+	return FS_NO_ERROR;
 }
 
-int teardown_file_struct(struct file_struct *to_teardown)
+enum fs_status teardown_file_struct(struct file_struct *to_teardown)
 {
 	if (to_teardown->data == NULL) {
-		return 0;
+		return FS_NO_ERROR;
 	} else {
 		if (to_teardown->mapping_start != NULL) {
 			if (munmap(to_teardown->mapping_start,
@@ -139,6 +138,6 @@ int teardown_file_struct(struct file_struct *to_teardown)
 		to_teardown->data = NULL;
 		to_teardown->src_file = NULL;
 
-		return 0;
+		return FS_NO_ERROR;
 	}
 }

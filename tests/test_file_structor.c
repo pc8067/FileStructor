@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 /* the directory containing the test input files */
 #define TEST_FILE_DIR		"test_inputs/"
@@ -101,20 +102,44 @@ static int _test_file_struct(struct file_struct_tv *tv,
 			     struct file_structor *structor)
 {
 	struct file_struct input_holder;
+	enum fs_status status;
 
-	if (init_file_struct(&input_holder, structor, tv->size,
-			     tv->start_in_file)) {
+	if ((status = init_file_struct(&input_holder, structor, tv->size,
+				       tv->start_in_file))) {
 		if (tv->expect_success) {
 			printlg(ERROR_LEVEL, "Unexpected testing error: %d.\n",
-				errno);
+				status);
 			return 0;
 		} else {
 			if (tv->result.failure.fail_at_init) {
-				return 1;
+				if (tv->result.failure.app_error == status) {
+					if (status == FSERR_ERRNO &&
+					    tv->result.failure.expected_errno
+					    != errno) {
+						printlg(ERROR_LEVEL,
+							"Expected errno %d "
+							"at initialization, "
+							"but got %d.\n",
+							tv->result
+							  .failure
+							  .expected_errno,
+							errno);
+						return 0;
+					}
+					return 1;
+				} else {
+					printlg(ERROR_LEVEL,
+						"Expected error %d "
+						"at initialization, "
+						"but got %d.\n",
+						tv->result.failure.app_error,
+						status);
+					return 0;
+				}
 			} else {
 				printlg(ERROR_LEVEL,
 					"Premature initialization error: %d.\n",
-					errno);
+					status);
 				return 0;
 			}
 		}
