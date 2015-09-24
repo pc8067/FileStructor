@@ -340,8 +340,147 @@ struct file_struct_tv array_order = {
 	},
 };
 
+/* the file that contains an array of structs */
+#define ARRAY_ELEMENTS_TEST_FILE	"array_elements_test"
+
+/* the value of the constant element in each struct in the array */
+#define CONSTANT_NUMBER		0xdeadbeef
+/* the number of structs in the array */
+#define N_ARRAY_ELEMENTS	4
+
+/* the struct inside an array */
+struct array_element {
+	/* stays the same for each array element */
+	uint32_t constant;
+	/* varies by element*/
+	uint32_t varying;
+};
+
+/* the in-memory declaration of the expected array */
+struct array_element array_elements[N_ARRAY_ELEMENTS] = {
+	{
+		.constant = CONSTANT_NUMBER,
+		.varying = 0,
+	}, {
+		.constant = CONSTANT_NUMBER,
+		.varying = 1,
+	}, {
+		.constant = CONSTANT_NUMBER,
+		.varying = 2,
+	}, {
+		.constant = CONSTANT_NUMBER,
+		.varying = 3,
+	}
+};
+
+static struct output_chunk outputs_array_elements[N_ARRAY_ELEMENTS] = {
+	{
+		.offset = 0,
+		.size = sizeof(struct array_element),
+		.expected_data = &array_elements[0],
+	}, {
+		.offset = 1 * sizeof(struct array_element),
+		.size = sizeof(struct array_element),
+		.expected_data = &array_elements[1],
+	}, {
+		.offset = 2 * sizeof(struct array_element),
+		.size = sizeof(struct array_element),
+		.expected_data = &array_elements[2],
+	}, {
+		.offset = 3 * sizeof(struct array_element),
+		.size = sizeof(struct array_element),
+		.expected_data = &array_elements[3],
+	}
+};
+
+static int
+read_members_in_array_elements(void *output, struct file_struct *input)
+{
+	struct array_element *output_elements = (struct array_element *) output;
+	unsigned element_i;
+
+	for (element_i = 0; element_i < N_ARRAY_ELEMENTS; element_i++) {
+		enum fs_status status;
+		if ((status = COPY_MEMBER_IN_ARRAY(output_elements, input,
+						   struct array_element,
+						   varying, LITTLE_END,
+						   element_i))) {
+			printlg(ERROR_LEVEL, "Failed to read varying member "
+					     "of element %u: %d.\n",
+				element_i, status);
+			return 0;
+		}
+		if ((status = COPY_MEMBER_IN_ARRAY(output_elements, input,
+						   struct array_element,
+						   constant, LITTLE_END,
+						   element_i))) {
+			printlg(ERROR_LEVEL, "Failed to read constant member "
+					     "of element %u: %d.\n",
+				element_i, status);
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/* Expect to successfully read array elements element-by-element. */
+struct file_struct_tv members_in_array_elements = {
+	.test_name = ARRAY_ELEMENTS_TEST_FILE,
+	.fail_stage = FSFAIL_NEVER,
+
+	.size = sizeof(array_elements),
+	.start_in_file = 0,
+
+	.good_reader = read_members_in_array_elements,
+
+	.result = {
+		.success = {
+			.n_outputs = N_ARRAY_ELEMENTS,
+			.outputs = outputs_array_elements
+		}
+	},
+};
+
+static int read_out_of_array(void *output, struct file_struct *input,
+			     struct fail_result *failure)
+{
+	struct array_element *output_elements = (struct array_element *) output;
+	enum fs_status status;
+	if ((status = COPY_MEMBER_IN_ARRAY(output_elements, input,
+					   struct array_element, varying,
+					   LITTLE_END, N_ARRAY_ELEMENTS + 1))) {
+		return check_error(failure, status);
+	} else {
+		printlg(ERROR_LEVEL,
+			"Did not catch out-of-array copy error.\n");
+		return 0;
+	}
+}
+
+/*
+ * Read from array with index that is too high,
+ * so expect a failure during reading.
+ */
+struct file_struct_tv out_of_array = {
+	.test_name = ARRAY_ELEMENTS_TEST_FILE,
+	.fail_stage = FSFAIL_READ,
+
+	.size = sizeof(array_elements),
+	.start_in_file = 0,
+
+	.bad_reader = read_out_of_array,
+
+	.result = {
+		.failure = {
+			.app_error = FSERR_OUT_OF_STRUCT
+		}
+	},
+};
+
 struct file_struct_tv *file_struct_tvs[N_FILE_STRUCT_TVS] = {
 	&file_not_exist, &chunk_too_large, &chunk_out_of_range,
 	&member_too_large, &member_out_of_range,
-	&all_orders, &array_order
+	&all_orders, &array_order,
+	&members_in_array_elements, &out_of_array
 };

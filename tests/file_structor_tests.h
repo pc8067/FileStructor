@@ -111,5 +111,5 @@ int check_error(struct fail_result *failure, enum fs_status status);
  * declare the array of test vectors that will be run by "test_file_structs"
  * in "test_file_structor.c"
  */
-#define N_FILE_STRUCT_TVS	7
+#define N_FILE_STRUCT_TVS	9
 extern struct file_struct_tv *file_struct_tvs[N_FILE_STRUCT_TVS];

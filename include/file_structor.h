@@ -307,6 +307,25 @@ copy_section(void *dst, struct file_struct *src, off_t offset, size_t size,
 	copy_section(dst, src, offsetof(type, member), \
 		     sizeof((((type *) dst)->member)), endianness)
 /*
+ * Wrapper function around "copy_section" to copy the chosen member of a struct
+ * that is an indexed element in an array
+ * dst:		the pointer to the destination struct array,
+ *		ie. the base, not the element (unless it is the first) or member
+ * src:		the source chunk
+ * type:	the type of the struct that is an array element
+ * member:	the name of the member
+ * endianness:	the desired endianness
+ * index:	the index
+ * returns	FS_NO_ERROR on success;
+ *		FSERR_OUT_OF_STRUCT if the requested section
+ *			is outside the range of the chunk,
+ *			ie. the index is too high
+ */
+#define COPY_MEMBER_IN_ARRAY(dst, src, type, member, endianness, index) \
+	copy_section(dst, src, sizeof(type) * index + offsetof(type, member), \
+		     sizeof((((type *) dst)->member)), endianness)
+
+/*
  * Wrapper function around "COPY_MEMBER", and thus "copy_section",
  * to copy a struct member in the original order,
  * as if the endianness matches the machine's
