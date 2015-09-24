@@ -63,7 +63,8 @@ struct file_struct_tv {
 	 * this function tests copying functions, expecting to pass.
 	 * output:	the buffer for storing the copied struct data
 	 * input:	contains the wrapper to the raw data
-	 * returns	1 if test passed
+	 * returns	1 if test has not failed yet
+	 *			(but the output may be wrong)
 	 *		0 otherwise
 	 */
 	int (*good_reader)(void *output, struct file_struct *input);
